@@ -4,11 +4,50 @@ We modify the official PyTorch image folder (https://github.com/pytorch/vision/b
 so that this class can load images from both current directory and its subdirectories.
 """
 
+
+import os
+
+
+IMG_EXTENSIONS = [
+    ".jpg", ".JPG", ".jpeg", ".JPEG",
+    ".png", ".PNG", ".ppm", ".PPM",
+    ".mat", ".BMP",
+    ".tif", ".TIF", ".tiff", ".TIFF",
+    ".npy",
+]
+
+
+def is_image_file(filename):
+    return any(
+        filename.endswith(extension)
+        for extension in IMG_EXTENSIONS
+    )
+
+
+def make_dataset(directory, max_dataset_size=float("inf")):
+    images = []
+
+    assert os.path.isdir(directory), (
+        f"{directory} is not a valid directory"
+    )
+
+    for root, _, filenames in sorted(os.walk(directory)):
+        for filename in filenames:
+            if is_image_file(filename):
+                images.append(os.path.join(root, filename))
+
+    return images[:min(max_dataset_size, len(images))]
+
+
+"""
 import torch.utils.data as data
 
 from PIL import Image
 import os
 import os.path
+import random
+import numpy as np
+import scipy.io as sio
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -104,3 +143,4 @@ class ImageFolder(data.Dataset):
 
     def __len__(self):
         return len(self.imgs)
+"""
