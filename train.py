@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
             total_iters += opt.batch_size
             epoch_iter += opt.batch_size
-            model.set_phi(epoch_iter)   # phi 값을 0.005에서 0.1 사이에서 로그 균등분포(log-uniform distribution)로 무작위 샘플링
+            model.set_phi(epoch_iter)   # phi 값을 0.005에서 0.1 사이에서 로그 균등분포(log-uniform distribution)로 무작위 샘플링F
             model.set_input(data)
             model.set_sigma(epoch_iter) # unpack data from dataset and apply preprocessing
             model.optimize_parameters()   # calculate loss functions, get gradients, update network weights
@@ -57,6 +57,9 @@ if __name__ == '__main__':
             iter_data_time = time.time()
             
         valid_psnr = 0
+        best_psnr = -float("inf")
+        best_epoch = 0
+        
         for i, data in enumerate(validation):
             model.set_input_val(data)
             psnr = model.forward_psnr()

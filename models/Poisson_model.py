@@ -117,7 +117,9 @@ class PoissonModel(BaseModel):
         return estimate(noise_model)
     def forward_search_gau(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.ema.load_state_dict(self.loaded_state)
+        if hasattr(self, "loaded_state"):
+            self.ema.load_state_dict(self.loaded_state)
+
         self.ema.copy_to(self.netf.parameters())        
         self.noise = 1e-5 * torch.randn(self.lr.shape).to(self.device,dtype = torch.float32)
         self.score = self.netf(self.lr,0)[0]        
