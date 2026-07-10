@@ -71,9 +71,9 @@ class PoissonModel(BaseModel):
         self.ema = ExponentialMovingAverage(self.netf.parameters(), decay=0.999)
       
     def set_input(self, input):
-        AtoB = self.opt.direction == 'AtoB'
-        self.hr = input['A' if AtoB else 'A']#.to(self.device,dtype = torch.float32)
-        self.lr = np.random.poisson(self.hr.numpy()/self.phi_s)*self.phi_s
+        AtoB = self.opt.direction == 'AtoB' # 데이터셋의 A 영역을 입력으로 받고, B 영역을 출력/정답 쪽으로 사용한다는 뜻 (현 코드에서 AtoB가 True이든 False이든 항상 데이터셋의 A만 가져옴 )
+        self.hr = input['A' if AtoB else 'A']#.to(self.device,dtype = torch.float32)    # clean image
+        self.lr = np.random.poisson(self.hr.numpy()/self.phi_s)*self.phi_s              # noisy image
         self.image_paths = input['A_paths' if AtoB else 'A_paths']        
         self.hr = self.hr.to(self.device,dtype = torch.float32)
         self.lr = torch.from_numpy(self.lr).to(self.device,dtype = torch.float32)
@@ -85,10 +85,13 @@ class PoissonModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths'] 
         
     def set_phi(self, iter):       
+        self.phi_s = np.random.uniform(0.01, 0.05, size=1)
+        """
         min_log = np.log([0.005])
         self.phi_now = 0.1
         phi_s = min_log + np.random.rand(1) * (np.log([self.phi_now]) - min_log)
         self.phi_s = np.exp(phi_s)
+        """
         
     def set_sigma(self, iter):
         labels = torch.randint(0, len(self.sigmas), (self.lr.shape[0],))
@@ -181,7 +184,10 @@ class PoissonModel(BaseModel):
         p = max(p1,p2)
         P = max(p,0)
         return p
- 
+    
+    def forward_estimate(self):
+        return self.forward_search_poi()
+    """
     def forward_estimate(self):
         self.ema.load_state_dict(self.loaded_state)
         self.ema.copy_to(self.netf.parameters()) 
@@ -189,6 +195,7 @@ class PoissonModel(BaseModel):
         self.thetas = []
         self.noise_levels = []
         self.theta = self.noise_model_estimation(self.score)
+        
         if (self.theta >= 0) & (self.theta <0.9) :
             self.noise_model = 'Gaussian'
         elif self.theta >= 1.9:
@@ -201,7 +208,7 @@ class PoissonModel(BaseModel):
         self.recon = self.foward_estimation(self.noise_model)
         print("The estimated noise level parameter is : {}".format(self.noise_level))
         return self.recon
-    
+    """
     def forward_psnr(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         with torch.no_grad():
