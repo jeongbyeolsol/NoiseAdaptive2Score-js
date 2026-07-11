@@ -558,6 +558,16 @@ class UNet(nn.Module):
 
     def forward(self, x,std):
         """Through encoder, then decoder by adding U-skip connections. """
+        # Five stride-2 encoder blocks require each spatial dimension to be a
+        # multiple of 32.  Training crops are 256x256, but validation uses the
+        # original DIV2K sizes (for example 1356x2040), which otherwise makes
+        # decoder and skip-connection sizes differ by one pixel.
+        original_height, original_width = x.shape[-2:]
+        pad_height = (-original_height) % 32
+        pad_width = (-original_width) % 32
+        if pad_height or pad_width:
+            x = F.pad(x, (0, pad_width, 0, pad_height), mode='reflect')
+
         x_bar, mu = self.add_noises(x,std)
         # Encoder
         pool1 = self._block1(x_bar)
@@ -580,6 +590,8 @@ class UNet(nn.Module):
         # Final activation
         log_prob = self._block6(concat1)
         loss = F.mse_loss(std*log_prob,-mu)
+        if pad_height or pad_width:
+            log_prob = log_prob[..., :original_height, :original_width]
         return log_prob,loss
 
     def eval(self):

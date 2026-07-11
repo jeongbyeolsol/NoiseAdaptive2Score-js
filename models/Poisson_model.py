@@ -97,14 +97,7 @@ class PoissonModel(BaseModel):
         labels = torch.randint(0, len(self.sigmas), (self.lr.shape[0],))
         self.sigma = self.sigmas[labels].view(self.lr.shape[0], *([1] * len(self.lr.shape[1:]))).to(self.device,dtype = torch.float32)
         self.loss_sigma = self.sigma[0]
-    def forward(self):
-        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.ema.store(self.netf.parameters())
-        self.ema.copy_to(self.netf.parameters())             
-        self.zeta = torch.from_numpy((self.phi_s)).to(self.device,dtype = torch.float32)
-        self.score = self.netf(self.lr,0)[0]
-        self.recon = (self.lr + 0.562*self.zeta)*torch.exp(self.zeta*self.score)
-        self.ema.restore(self.netf.parameters())
+    
     def foward_estimation(self,noise_model):
         def estimate(noise_model):
             if noise_model == "Gaussian":
@@ -130,19 +123,9 @@ class PoissonModel(BaseModel):
         self.noise_level = self.noise_level*255
         self.recon = self.lr +(self.noise_level/255)**2 *(self.score)
         return self.recon
-    def forward_search_poi(self):
-        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.ema.load_state_dict(self.loaded_state)
-        self.ema.copy_to(self.netf.parameters())        
-        self.noise = 1e-5 * torch.randn(self.lr.shape).to(self.device,dtype = torch.float32)
-        self.score = self.netf(self.lr,0)[0]        
-        self.score_2 = self.netf(self.lr+self.noise,0)[0]              
-        c = self.noise/(self.score_2 - self.score)
-        self.noise_level = -self.lr + torch.sqrt((self.lr)**2 - 2*c)
-        self.noise_level = torch.median(self.noise_level).cpu().detach().numpy()
-        self.noise_level = np.around(self.noise_level,decimals= 2)
-        self.recon = (self.lr +self.noise_level/2)*torch.exp(self.noise_level*self.score)
-        return self.recon
+    
+    
+    
     def forward_search_gamma(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.ema.load_state_dict(self.loaded_state)
@@ -187,41 +170,215 @@ class PoissonModel(BaseModel):
         P = max(p,0)
         return p
     
-    def forward_estimate(self):
-        return self.forward_search_poi()
-    """
-    def forward_estimate(self):
-        self.ema.load_state_dict(self.loaded_state)
-        self.ema.copy_to(self.netf.parameters()) 
-        self.score = self.netf(self.lr,0)[0]
-        self.thetas = []
-        self.noise_levels = []
-        self.theta = self.noise_model_estimation(self.score)
-        
-        if (self.theta >= 0) & (self.theta <0.9) :
-            self.noise_model = 'Gaussian'
-        elif self.theta >= 1.9:
-            self.noise_model = "Gamma"
-        elif (self.theta >= 0.9) & (self.theta <1.9):
-            self.noise_model = 'Poisson' 
-        if self.target_model == self.noise_model:
-            self.acc +=1            
-        print("The estimated noise model of this image is : ", self.noise_model)
-        self.recon = self.foward_estimation(self.noise_model)
-        print("The estimated noise level parameter is : {}".format(self.noise_level))
-        return self.recon
-    """
-    def forward_psnr(self):
-        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        with torch.no_grad():
-            self.ema.store(self.netf.parameters())
-            self.ema.copy_to(self.netf.parameters())  
-            self.recon = self.forward_estimate()
-            self.recon = torch.clamp(self.recon.detach().cpu(), 0, 1)
-            self.hr = self.hr.detach().cpu()
+    def _load_ema_state_once(self):
+        """체크포인트에서 읽은 EMA 상태가 있으면 최초 한 번만 적용한다."""
+        if (
+            hasattr(self, "loaded_state")
+            and not getattr(self, "_ema_state_loaded", False)
+        ):
+            self.ema.load_state_dict(self.loaded_state)
+            self._ema_state_loaded = True
+
+
+    def forward(self):
+        """
+        학습 중 시각화를 위한 Poisson 복원.
+
+        현재 학습 가중치를 보관하고 EMA 가중치로 복원한 뒤,
+        반드시 원래 학습 가중치로 되돌린다.
+        """
+        self._load_ema_state_once()
+
+        was_training = self.netf.training
+        self.ema.store(self.netf.parameters())
+
+        try:
+            self.ema.copy_to(self.netf.parameters())
+            self.netf.eval()
+
+            with torch.no_grad():
+                self.zeta = torch.as_tensor(
+                    self.phi_s,
+                    device=self.device,
+                    dtype=torch.float32,
+                )
+
+                self.score = self.netf(self.lr, 0)[0]
+
+                # exp overflow 방지
+                exp_argument = torch.clamp(
+                    self.zeta * self.score,
+                    min=-20.0,
+                    max=20.0,
+                )
+
+                self.recon = (
+                    self.lr + 0.562 * self.zeta
+                ) * torch.exp(exp_argument)
+
+        finally:
+            # 어떤 오류가 발생하더라도 학습 가중치를 복구한다.
             self.ema.restore(self.netf.parameters())
-            psnr = calc_psnr(self.recon,self.hr)                
-        return  psnr
+            self.netf.train(was_training)
+
+
+    def forward_search_poi(self):
+        """
+        Poisson noise level을 추정하고 Tweedie 식으로 복원한다.
+
+        EMA 교체는 forward_estimate()에서 담당하므로,
+        이 함수에서는 EMA store/copy/restore를 하지 않는다.
+        """
+        with torch.no_grad():
+            self.noise = 1e-5 * torch.randn_like(self.lr)
+
+            self.score = self.netf(self.lr, 0)[0]
+            self.score_2 = self.netf(
+                self.lr + self.noise,
+                0,
+            )[0]
+
+            score_diff = self.score_2 - self.score
+
+            # score 차이가 0에 가까우면 division by zero가 발생한다.
+            eps = 1e-12
+            safe_sign = torch.where(
+                score_diff >= 0,
+                torch.ones_like(score_diff),
+                -torch.ones_like(score_diff),
+            )
+
+            safe_score_diff = torch.where(
+                score_diff.abs() < eps,
+                safe_sign * eps,
+                score_diff,
+            )
+
+            c = self.noise / safe_score_diff
+
+            radicand = self.lr.square() - 2.0 * c
+
+            # sqrt에 넣을 수 있는 유효한 원소만 선택한다.
+            valid_radicand = (
+                torch.isfinite(radicand)
+                & torch.isfinite(safe_score_diff)
+                & (radicand >= 0.0)
+            )
+
+            safe_radicand = torch.clamp(
+                radicand,
+                min=0.0,
+            )
+
+            noise_level_map = (
+                -self.lr + torch.sqrt(safe_radicand)
+            )
+
+            valid_level = (
+                valid_radicand
+                & torch.isfinite(noise_level_map)
+                & (noise_level_map > 0.0)
+            )
+
+            if not valid_level.any():
+                raise FloatingPointError(
+                    "유효한 Poisson noise-level 추정값이 없습니다. "
+                    "score network의 학습이 아직 충분하지 않거나 "
+                    "score difference가 지나치게 작을 수 있습니다."
+                )
+
+            # 유효한 양수 추정값의 median을 사용한다.
+            estimated_level = torch.median(
+                noise_level_map[valid_level]
+            ).item()
+
+            if not np.isfinite(estimated_level):
+                raise FloatingPointError(
+                    "추정된 Poisson noise level이 NaN 또는 Inf입니다."
+                )
+
+            # 복원 계산에는 반올림하지 않은 값을 사용한다.
+            self.noise_level = max(
+                float(estimated_level),
+                1e-8,
+            )
+
+            # exponential overflow 방지
+            exp_argument = torch.clamp(
+                self.noise_level * self.score,
+                min=-20.0,
+                max=20.0,
+            )
+
+            self.recon = (
+                self.lr + self.noise_level / 2.0
+            ) * torch.exp(exp_argument)
+
+            if not torch.isfinite(self.recon).all():
+                raise FloatingPointError(
+                    "Poisson 복원 영상에 NaN 또는 Inf가 발생했습니다."
+                )
+
+            return self.recon
+
+
+    def forward_estimate(self):
+        """
+        과제의 noise model이 Poisson으로 고정되어 있으므로
+        분포 판별 없이 Poisson noise level만 추정한다.
+
+        EMA 가중치 교체는 이 함수 한 곳에서만 수행한다.
+        """
+        self._load_ema_state_once()
+
+        was_training = self.netf.training
+        self.ema.store(self.netf.parameters())
+
+        try:
+            self.ema.copy_to(self.netf.parameters())
+            self.netf.eval()
+
+            return self.forward_search_poi()
+
+        finally:
+            # validation 이후에는 반드시 원래 학습 가중치로 복구한다.
+            self.ema.restore(self.netf.parameters())
+            self.netf.train(was_training)
+
+
+    def forward_psnr(self):
+        """
+        EMA 모델로 Poisson 복원을 수행하고 validation PSNR을 계산한다.
+
+        forward_estimate()가 EMA 처리를 담당하므로,
+        여기서는 EMA store/copy/restore를 다시 수행하지 않는다.
+        """
+        with torch.no_grad():
+            reconstructed = self.forward_estimate()
+
+            reconstructed = torch.clamp(
+                reconstructed,
+                min=0.0,
+                max=1.0,
+            )
+
+            if not torch.isfinite(reconstructed).all():
+                raise FloatingPointError(
+                    "PSNR 계산 전 복원 영상에 NaN 또는 Inf가 있습니다."
+                )
+
+            recon_cpu = reconstructed.detach().cpu()
+            hr_cpu = self.hr.detach().cpu()
+
+            # 시각화 코드와의 호환성을 위해 저장한다.
+            self.recon = recon_cpu
+
+            psnr = calc_psnr(
+                recon_cpu,
+                hr_cpu,
+            )
+
+            return psnr
     
     def backward_f(self):
         """Calculate GAN and L1 loss for the generator"""            
