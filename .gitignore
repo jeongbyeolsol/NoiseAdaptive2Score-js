@@ -74,6 +74,7 @@ data_raw/
 data_processed/
 *DIV2K_valid_HR*/
 *DIV2K_train_HR*/
+*CBSD100*/
 
 # Common dataset / array formats
 *.npy
