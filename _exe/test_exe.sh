@@ -34,6 +34,9 @@ EPOCH="${EPOCH:-best}"
 # 학습할 때 사용한 checkpoint 디렉토리 이름
 CHECKPOINT_NAME="${CHECKPOINT_NAME:-DIV2K_NA2S_Poisson_0.01}"
 
+# 체크포인트 이름과 별개로 사용할 결과 디렉토리 이름
+RESULT_NAME="${RESULT_NAME:-${CHECKPOINT_NAME}}"
+
 # 처리할 최대 이미지 수
 NUM_TEST="${NUM_TEST:-10000}"
 
@@ -132,7 +135,7 @@ ln -sfn "${NOISY_SOURCE}" "${NOISY_ALIAS}"
 mkdir -p "${RESULTS_DIR}" "${LOG_DIR}"
 
 # test.py가 실제로 만드는 결과 경로
-EXPECTED_RESULT_DIR="${RESULTS_DIR}/${CHECKPOINT_NAME}/test_${EPOCH}"
+EXPECTED_RESULT_DIR="${RESULTS_DIR}/${RESULT_NAME}/test_${EPOCH}"
 
 echo "============================================================"
 echo "NoiseAdaptive2Score Poisson test"
@@ -145,6 +148,7 @@ echo "Noisy data        : ${NOISY_SOURCE}"
 echo "Dataset alias     : ${NOISY_ALIAS}"
 echo "Number of pairs   : ${CLEAN_COUNT}"
 echo "Checkpoint        : ${EMA_CHECKPOINT}"
+echo "Result name       : ${RESULT_NAME}"
 echo "Maximum test data : ${NUM_TEST}"
 echo "Results           : ${EXPECTED_RESULT_DIR}"
 echo "Log               : ${LOG_FILE}"
@@ -169,6 +173,7 @@ python -u test.py \
     --checkpoints_dir "${CHECKPOINTS_DIR}" \
     --epoch "${EPOCH}" \
     --results_dir "${RESULTS_DIR}" \
+    --result_name "${RESULT_NAME}" \
     --num_test "${NUM_TEST}" \
     --gpu_ids 0 \
     --direction BtoA \

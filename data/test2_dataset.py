@@ -80,6 +80,15 @@ class Test2Dataset(BaseDataset):
             np_transpose = np.ascontiguousarray(img.transpose((2, 0, 1)))
             tensor = torch.from_numpy(np_transpose).float()
 
+            # The score network is trained on images in [0, 1].  Some test
+            # sets (including the supplied CBSD data) are stored as uint8
+            # arrays in [0, 255], while DIV2K validation arrays are already
+            # floating point [0, 1].
+            if np.issubdtype(img.dtype, np.integer):
+                tensor.div_(float(np.iinfo(img.dtype).max))
+            elif tensor.numel() and tensor.max().item() > 1.0:
+                tensor.div_(255.0)
+
             return tensor
 
         return [_np2Tensor(a) for a in args]
