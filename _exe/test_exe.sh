@@ -39,6 +39,8 @@ RESULT_NAME="${RESULT_NAME:-${CHECKPOINT_NAME}}"
 
 # 처리할 최대 이미지 수
 NUM_TEST="${NUM_TEST:-10000}"
+LAMBDA_MIN="${LAMBDA_MIN:-0.01}"
+LAMBDA_MAX="${LAMBDA_MAX:-0.05}"
 
 # ------------------------------------------------------------
 # Paths
@@ -143,6 +145,7 @@ echo "============================================================"
 echo "Project root      : ${ROOT_DIR}"
 echo "GPU               : ${GPU}"
 echo "Noise level       : ${NOISE_LEVEL}"
+echo "Poisson lambda    : [${LAMBDA_MIN}, ${LAMBDA_MAX}]"
 echo "Clean data        : ${CLEAN_DIR}"
 echo "Noisy data        : ${NOISY_SOURCE}"
 echo "Dataset alias     : ${NOISY_ALIAS}"
@@ -168,6 +171,8 @@ python -u test.py \
     --dataroot "${TEST_ROOT}" \
     --dataroot_valid "${TEST_ROOT}" \
     --noise_level "${NOISE_LEVEL}" \
+    --poisson_lambda_min "${LAMBDA_MIN}" \
+    --poisson_lambda_max "${LAMBDA_MAX}" \
     --name "${CHECKPOINT_NAME}" \
     --pretrain_name "${CHECKPOINT_NAME}" \
     --checkpoints_dir "${CHECKPOINTS_DIR}" \

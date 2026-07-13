@@ -29,6 +29,10 @@ NUM_THREADS="${NUM_THREADS:-4}"
 N_EPOCHS="${N_EPOCHS:-200}"
 N_EPOCHS_DECAY="${N_EPOCHS_DECAY:-0}"
 LEARNING_RATE="${LEARNING_RATE:-1e-5}"
+LR_POLICY="${LR_POLICY:-step}"
+LR_DECAY_ITERS="${LR_DECAY_ITERS:-100}"
+LAMBDA_MIN="${LAMBDA_MIN:-0.01}"
+LAMBDA_MAX="${LAMBDA_MAX:-0.05}"
 
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-DIV2K_NA2S_Poisson_${VAL_LEVEL}}"
 
@@ -117,6 +121,8 @@ echo "Validation pairs : ${CLEAN_COUNT}"
 echo "Batch size       : ${BATCH_SIZE}"
 echo "Epochs           : ${N_EPOCHS} + ${N_EPOCHS_DECAY}"
 echo "Learning rate    : ${LEARNING_RATE}"
+echo "LR policy        : ${LR_POLICY}"
+echo "Poisson lambda   : Uniform(${LAMBDA_MIN}, ${LAMBDA_MAX}) per image"
 echo "Experiment       : ${EXPERIMENT_NAME}"
 echo "Checkpoints      : ${CHECKPOINTS_DIR}/${EXPERIMENT_NAME}"
 echo "Log              : ${LOG_FILE}"
@@ -146,9 +152,12 @@ python -u train.py \
     --n_epochs "${N_EPOCHS}" \
     --n_epochs_decay "${N_EPOCHS_DECAY}" \
     --lr "${LEARNING_RATE}" \
+    --poisson_lambda_min "${LAMBDA_MIN}" \
+    --poisson_lambda_max "${LAMBDA_MAX}" \
     --beta1 0.9 \
-    --lr_policy step \
-    --lr_decay_iters 100 \
+    --lr_policy "${LR_POLICY}" \
+    --lr_decay_iters "${LR_DECAY_ITERS}" \
+    --validation_random_poisson \
     --print_freq 100 \
     --display_freq 500 \
     --save_latest_freq 5000 \

@@ -107,6 +107,25 @@ class TestDataset(BaseDataset):
         B_path = self.B_paths[index]
         A = np.load(A_path,allow_pickle=True)
         B = np.load(B_path)
+        if getattr(self.opt, 'validation_random_poisson', False):
+            A_float = A.astype(np.float32, copy=False)
+            if np.issubdtype(A.dtype, np.integer):
+                A_float = A_float / float(np.iinfo(A.dtype).max)
+            elif A_float.size and A_float.max() > 1.0:
+                A_float = A_float / 255.0
+
+            # Stable across epochs, but independently sampled per image.
+            rng = np.random.RandomState(index)
+            lam = rng.uniform(
+                self.opt.poisson_lambda_min,
+                self.opt.poisson_lambda_max,
+            )
+            B = np.clip(
+                rng.poisson(np.clip(A_float, 0.0, 1.0) / lam) * lam,
+                0.0,
+                1.0,
+            )
+            A = A_float
         A = self.np2Tensor(A)[0]
         B = self.np2Tensor(B)[0]
         return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}

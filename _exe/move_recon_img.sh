@@ -1,5 +1,5 @@
-SRC="$PWD/results/CBSD100_Poisson_restored/test_best/images"
-DST="$PWD/results/CBSD100_Poisson_restored/restored_only"
+SRC="$PWD/results/CBSD100_Poisson_blind_restored/test_best/images"
+DST="$PWD/results/CBSD100_Poisson_blind_restored/restored_only"
 
 mkdir -p "$DST"
 

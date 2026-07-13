@@ -21,6 +21,10 @@ class PoissonModel(BaseModel):
     def modify_commandline_options(parser, is_train=True):
         # changing the default values to match the pix2pix paper (https://phillipi.github.io/pix2pix/)
         parser.set_defaults(norm='batch', netG='unet', dataset_mode='aligned')
+        parser.add_argument('--poisson_lambda_min', type=float, default=0.01,
+                            help='minimum Poisson scale used for blind training/inference')
+        parser.add_argument('--poisson_lambda_max', type=float, default=0.05,
+                            help='maximum Poisson scale used for blind training/inference')
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=1.0, help='weight for L1 loss')
@@ -65,6 +69,10 @@ class PoissonModel(BaseModel):
         self.sigma_max = 0.1
         self.sigma_annealing = 2*11000
         self.target_model = opt.target_model
+        self.poisson_lambda_min = opt.poisson_lambda_min
+        self.poisson_lambda_max = opt.poisson_lambda_max
+        if not 0 < self.poisson_lambda_min <= self.poisson_lambda_max:
+            raise ValueError('Poisson lambda range must satisfy 0 < min <= max.')
         self.acc= 0
         self.sigmas = np.exp(np.linspace(np.log(self.sigma_max), np.log(self.sigma_min),self.sigma_annealing))
         self.sigmas = torch.from_numpy(self.sigmas)
@@ -72,11 +80,18 @@ class PoissonModel(BaseModel):
       
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB' # 데이터셋의 A 영역을 입력으로 받고, B 영역을 출력/정답 쪽으로 사용한다는 뜻 (현 코드에서 AtoB가 True이든 False이든 항상 데이터셋의 A만 가져옴 )
-        self.hr = input['A' if AtoB else 'A']#.to(self.device,dtype = torch.float32)    # clean image
-        self.lr = np.random.poisson(self.hr.numpy()/self.phi_s)*self.phi_s              # noisy image
+        self.hr = input['A' if AtoB else 'A'].to(self.device, dtype=torch.float32)
+        # The task samples one independent lambda per image.  Keep the
+        # singleton channel/spatial dimensions so broadcasting does not mix
+        # noise levels within an image.
+        batch_size = self.hr.shape[0]
+        self.phi_s = torch.empty(
+            batch_size, 1, 1, 1, device=self.device, dtype=torch.float32
+        ).uniform_(self.poisson_lambda_min, self.poisson_lambda_max)
+        self.lr = (
+            torch.poisson(self.hr.clamp(0.0, 1.0) / self.phi_s) * self.phi_s
+        ).clamp_(0.0, 1.0)
         self.image_paths = input['A_paths' if AtoB else 'A_paths']        
-        self.hr = self.hr.to(self.device,dtype = torch.float32)
-        self.lr = torch.from_numpy(self.lr).to(self.device,dtype = torch.float32)
         
     def set_input_val(self, input):
         AtoB = self.opt.direction == 'AtoB'
@@ -84,8 +99,8 @@ class PoissonModel(BaseModel):
         self.lr =input['B' if AtoB else 'B'].to(self.device,dtype = torch.float32)
         self.image_paths = input['A_paths' if AtoB else 'B_paths'] 
         
-    def set_phi(self, iter):       
-        self.phi_s = np.random.uniform(0.01, 0.05, size=1)
+    def set_phi(self, iter):
+        """Deprecated: lambda is sampled per image in set_input()."""
         """
         min_log = np.log([0.005])
         self.phi_now = 0.1
@@ -302,6 +317,11 @@ class PoissonModel(BaseModel):
                 float(estimated_level),
                 1e-8,
             )
+            self.noise_level = float(np.clip(
+                self.noise_level,
+                self.poisson_lambda_min,
+                self.poisson_lambda_max,
+            ))
 
             # exponential overflow 방지
             exp_argument = torch.clamp(
