@@ -1,11 +1,21 @@
-DIV2K_NA2S_Poisson_0.01
+DIV2K_NA2S_Poisson_0.01 (0.7M)
 
 PSNR: 26.4584
 SSIM: 0.6945
 
+
 ---
 
-DIV2K_NA2S_Poisson_blind_001_005
+DIV2K_NA2S_Poisson_blind_001_005 (0.7M)
 
 PSNR: 27.4131
 SSIM: 0.7479
+
+---
+
+DIV2K_NA2S_Poisson_blind_3M (2.97M)
+
+PSNR: 27.5585
+SSIM: 0.7511
+
+---

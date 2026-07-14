@@ -41,6 +41,7 @@ RESULT_NAME="${RESULT_NAME:-${CHECKPOINT_NAME}}"
 NUM_TEST="${NUM_TEST:-10000}"
 LAMBDA_MIN="${LAMBDA_MIN:-0.01}"
 LAMBDA_MAX="${LAMBDA_MAX:-0.05}"
+UNET_CHANNELS="${UNET_CHANNELS:-48}"
 
 # ------------------------------------------------------------
 # Paths
@@ -146,6 +147,7 @@ echo "Project root      : ${ROOT_DIR}"
 echo "GPU               : ${GPU}"
 echo "Noise level       : ${NOISE_LEVEL}"
 echo "Poisson lambda    : [${LAMBDA_MIN}, ${LAMBDA_MAX}]"
+echo "U-Net channels    : ${UNET_CHANNELS}"
 echo "Clean data        : ${CLEAN_DIR}"
 echo "Noisy data        : ${NOISY_SOURCE}"
 echo "Dataset alias     : ${NOISY_ALIAS}"
@@ -184,6 +186,7 @@ python -u test.py \
     --direction BtoA \
     --input_nc 3 \
     --output_nc 3 \
+    --unet_channels "${UNET_CHANNELS}" \
     --ngf 64 \
     --load_size 256 \
     --crop_size 256 \

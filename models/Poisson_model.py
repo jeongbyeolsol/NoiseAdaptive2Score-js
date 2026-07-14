@@ -21,6 +21,8 @@ class PoissonModel(BaseModel):
     def modify_commandline_options(parser, is_train=True):
         # changing the default values to match the pix2pix paper (https://phillipi.github.io/pix2pix/)
         parser.set_defaults(norm='batch', netG='unet', dataset_mode='aligned')
+        parser.add_argument('--unet_channels', type=int, default=48,
+                            help='base channel width of the score U-Net')
         parser.add_argument('--poisson_lambda_min', type=float, default=0.01,
                             help='minimum Poisson scale used for blind training/inference')
         parser.add_argument('--poisson_lambda_max', type=float, default=0.05,
@@ -54,7 +56,7 @@ class PoissonModel(BaseModel):
         else:  # during test time, only load G
             self.model_names = ['f']
             self.visual_names = ['lr','score','recon']
-        self.netf = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'unet', opt.norm,
+        self.netf = networks.define_G(opt.input_nc, opt.output_nc, opt.unet_channels, 'unet', opt.norm,
                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
         if self.isTrain:
             # define loss functions

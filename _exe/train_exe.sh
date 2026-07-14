@@ -33,6 +33,7 @@ LR_POLICY="${LR_POLICY:-step}"
 LR_DECAY_ITERS="${LR_DECAY_ITERS:-100}"
 LAMBDA_MIN="${LAMBDA_MIN:-0.01}"
 LAMBDA_MAX="${LAMBDA_MAX:-0.05}"
+UNET_CHANNELS="${UNET_CHANNELS:-48}"
 
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-DIV2K_NA2S_Poisson_${VAL_LEVEL}}"
 
@@ -123,6 +124,7 @@ echo "Epochs           : ${N_EPOCHS} + ${N_EPOCHS_DECAY}"
 echo "Learning rate    : ${LEARNING_RATE}"
 echo "LR policy        : ${LR_POLICY}"
 echo "Poisson lambda   : Uniform(${LAMBDA_MIN}, ${LAMBDA_MAX}) per image"
+echo "U-Net channels   : ${UNET_CHANNELS}"
 echo "Experiment       : ${EXPERIMENT_NAME}"
 echo "Checkpoints      : ${CHECKPOINTS_DIR}/${EXPERIMENT_NAME}"
 echo "Log              : ${LOG_FILE}"
@@ -145,6 +147,7 @@ python -u train.py \
     --direction BtoA \
     --input_nc 3 \
     --output_nc 3 \
+    --unet_channels "${UNET_CHANNELS}" \
     --load_size 256 \
     --crop_size 256 \
     --batch_size "${BATCH_SIZE}" \
