@@ -5,6 +5,7 @@ from models import create_model
 from util.visualizer import save_images
 from util import html
 import numpy as np
+import torch
 
 if __name__ == '__main__':
     opt = TestOptions().parse()  # get test options
@@ -14,6 +15,9 @@ if __name__ == '__main__':
     opt.serial_batches = True  # disable data shuffling; comment this line if results on randomly chosen images are needed.
     opt.no_flip = True    # no flip; comment this line if results on flipped images are needed.
     opt.display_id = -1   
+    torch.manual_seed(opt.inference_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(opt.inference_seed)
     phase = 'test'# no visdom display; the test code saves the results to a HTML file.
     dataset = create_dataset(opt,phase)  # create a dataset given opt.dataset_mode and other options
     model = create_model(opt)      # create a model given opt.model and other options
@@ -34,8 +38,12 @@ if __name__ == '__main__':
             break
         model.set_input_val(data)
         model.test_tv()           # run inference
+        noise_levels.append(model.noise_level)
         visuals = model.get_current_visuals() 
         img_path = model.get_image_paths()     # get image paths
         if i % 5 == 0:  # save images to an HTML file
             print('processing (%04d)-th image... %s' % (i, img_path))
         save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
+    if noise_levels:
+        print('Estimated Poisson lambda: min %.6f, median %.6f, max %.6f' % (
+            np.min(noise_levels), np.median(noise_levels), np.max(noise_levels)))

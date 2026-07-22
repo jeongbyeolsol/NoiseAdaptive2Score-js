@@ -42,6 +42,9 @@ NUM_TEST="${NUM_TEST:-10000}"
 LAMBDA_MIN="${LAMBDA_MIN:-0.01}"
 LAMBDA_MAX="${LAMBDA_MAX:-0.05}"
 UNET_CHANNELS="${UNET_CHANNELS:-48}"
+PERTURBATIONS="${PERTURBATIONS:-1}"
+PERTURBATION_SCALE="${PERTURBATION_SCALE:-1e-5}"
+INFERENCE_SEED="${INFERENCE_SEED:-0}"
 
 # ------------------------------------------------------------
 # Paths
@@ -148,6 +151,8 @@ echo "GPU               : ${GPU}"
 echo "Noise level       : ${NOISE_LEVEL}"
 echo "Poisson lambda    : [${LAMBDA_MIN}, ${LAMBDA_MAX}]"
 echo "U-Net channels    : ${UNET_CHANNELS}"
+echo "Perturbations     : ${PERTURBATIONS} x ${PERTURBATION_SCALE}"
+echo "Inference seed    : ${INFERENCE_SEED}"
 echo "Clean data        : ${CLEAN_DIR}"
 echo "Noisy data        : ${NOISY_SOURCE}"
 echo "Dataset alias     : ${NOISY_ALIAS}"
@@ -175,6 +180,8 @@ python -u test.py \
     --noise_level "${NOISE_LEVEL}" \
     --poisson_lambda_min "${LAMBDA_MIN}" \
     --poisson_lambda_max "${LAMBDA_MAX}" \
+    --poisson_perturbations "${PERTURBATIONS}" \
+    --poisson_perturbation_scale "${PERTURBATION_SCALE}" \
     --name "${CHECKPOINT_NAME}" \
     --pretrain_name "${CHECKPOINT_NAME}" \
     --checkpoints_dir "${CHECKPOINTS_DIR}" \
@@ -182,6 +189,7 @@ python -u test.py \
     --results_dir "${RESULTS_DIR}" \
     --result_name "${RESULT_NAME}" \
     --num_test "${NUM_TEST}" \
+    --inference_seed "${INFERENCE_SEED}" \
     --gpu_ids 0 \
     --direction BtoA \
     --input_nc 3 \

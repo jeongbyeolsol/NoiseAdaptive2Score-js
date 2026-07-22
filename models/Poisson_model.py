@@ -27,6 +27,10 @@ class PoissonModel(BaseModel):
                             help='minimum Poisson scale used for blind training/inference')
         parser.add_argument('--poisson_lambda_max', type=float, default=0.05,
                             help='maximum Poisson scale used for blind training/inference')
+        parser.add_argument('--poisson_perturbations', type=int, default=1,
+                            help='number of independent perturbations used to estimate lambda')
+        parser.add_argument('--poisson_perturbation_scale', type=float, default=1e-5,
+                            help='standard deviation of perturbations used to estimate lambda')
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=1.0, help='weight for L1 loss')
@@ -73,8 +77,14 @@ class PoissonModel(BaseModel):
         self.target_model = opt.target_model
         self.poisson_lambda_min = opt.poisson_lambda_min
         self.poisson_lambda_max = opt.poisson_lambda_max
+        self.poisson_perturbations = opt.poisson_perturbations
+        self.poisson_perturbation_scale = opt.poisson_perturbation_scale
         if not 0 < self.poisson_lambda_min <= self.poisson_lambda_max:
             raise ValueError('Poisson lambda range must satisfy 0 < min <= max.')
+        if self.poisson_perturbations < 1:
+            raise ValueError('poisson_perturbations must be at least 1.')
+        if self.poisson_perturbation_scale <= 0:
+            raise ValueError('poisson_perturbation_scale must be positive.')
         self.acc= 0
         self.sigmas = np.exp(np.linspace(np.log(self.sigma_max), np.log(self.sigma_min),self.sigma_annealing))
         self.sigmas = torch.from_numpy(self.sigmas)
@@ -247,72 +257,57 @@ class PoissonModel(BaseModel):
         이 함수에서는 EMA store/copy/restore를 하지 않는다.
         """
         with torch.no_grad():
-            self.noise = 1e-5 * torch.randn_like(self.lr)
-
             self.score = self.netf(self.lr, 0)[0]
-            self.score_2 = self.netf(
-                self.lr + self.noise,
-                0,
-            )[0]
-
-            score_diff = self.score_2 - self.score
-
-            # score 차이가 0에 가까우면 division by zero가 발생한다.
+            estimates = []
             eps = 1e-12
-            safe_sign = torch.where(
-                score_diff >= 0,
-                torch.ones_like(score_diff),
-                -torch.ones_like(score_diff),
-            )
 
-            safe_score_diff = torch.where(
-                score_diff.abs() < eps,
-                safe_sign * eps,
-                score_diff,
-            )
+            for _ in range(self.poisson_perturbations):
+                self.noise = (
+                    self.poisson_perturbation_scale
+                    * torch.randn_like(self.lr)
+                )
+                self.score_2 = self.netf(self.lr + self.noise, 0)[0]
+                score_diff = self.score_2 - self.score
+                safe_sign = torch.where(
+                    score_diff >= 0,
+                    torch.ones_like(score_diff),
+                    -torch.ones_like(score_diff),
+                )
+                safe_score_diff = torch.where(
+                    score_diff.abs() < eps,
+                    safe_sign * eps,
+                    score_diff,
+                )
+                c = self.noise / safe_score_diff
+                radicand = self.lr.square() - 2.0 * c
+                valid_radicand = (
+                    torch.isfinite(radicand)
+                    & torch.isfinite(safe_score_diff)
+                    & (radicand >= 0.0)
+                )
+                noise_level_map = (
+                    -self.lr + torch.sqrt(torch.clamp(radicand, min=0.0))
+                )
+                valid_level = (
+                    valid_radicand
+                    & torch.isfinite(noise_level_map)
+                    & (noise_level_map > 0.0)
+                )
+                if valid_level.any():
+                    estimate = torch.median(noise_level_map[valid_level]).item()
+                    if np.isfinite(estimate):
+                        estimates.append(estimate)
 
-            c = self.noise / safe_score_diff
-
-            radicand = self.lr.square() - 2.0 * c
-
-            # sqrt에 넣을 수 있는 유효한 원소만 선택한다.
-            valid_radicand = (
-                torch.isfinite(radicand)
-                & torch.isfinite(safe_score_diff)
-                & (radicand >= 0.0)
-            )
-
-            safe_radicand = torch.clamp(
-                radicand,
-                min=0.0,
-            )
-
-            noise_level_map = (
-                -self.lr + torch.sqrt(safe_radicand)
-            )
-
-            valid_level = (
-                valid_radicand
-                & torch.isfinite(noise_level_map)
-                & (noise_level_map > 0.0)
-            )
-
-            if not valid_level.any():
+            if not estimates:
                 raise FloatingPointError(
                     "유효한 Poisson noise-level 추정값이 없습니다. "
                     "score network의 학습이 아직 충분하지 않거나 "
                     "score difference가 지나치게 작을 수 있습니다."
                 )
 
-            # 유효한 양수 추정값의 median을 사용한다.
-            estimated_level = torch.median(
-                noise_level_map[valid_level]
-            ).item()
-
-            if not np.isfinite(estimated_level):
-                raise FloatingPointError(
-                    "추정된 Poisson noise level이 NaN 또는 Inf입니다."
-                )
+            # Median across independent estimates rejects unstable finite
+            # differences without increasing model size or retraining.
+            estimated_level = float(np.median(estimates))
 
             # 복원 계산에는 반올림하지 않은 값을 사용한다.
             self.noise_level = max(
